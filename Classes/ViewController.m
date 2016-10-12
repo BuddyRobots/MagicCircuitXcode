@@ -26,7 +26,7 @@ int testLuaWithArr(float array[],int len)
     Torch *t = [Torch new];
     [t initialize];
     [t runMain:@"classification" inFolder:@"xor_lua"];//main_2是lua文件名   xor_lua 是lua文件所在文件夹名称
-    [t loadFileWithName:@"5.mdl" inResourceFolder:@"xor_lua" andLoadMethodName:@"loadModel"];
+    [t loadFileWithName:@"classifyCard.mdl" inResourceFolder:@"xor_lua" andLoadMethodName:@"loadModel"];
     
     lua_State * L = [t getLuaState];
     
