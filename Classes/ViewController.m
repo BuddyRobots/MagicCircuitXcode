@@ -25,11 +25,12 @@ int testLuaWithArr(float array[],int len)
 //    }
     Torch *t = [Torch new];
     [t initialize];
-    [t runMain:@"main_2" inFolder:@"xor_lua"];//main_2是lua文件名   xor_lua 是lua文件所在文件夹名称
-    [t loadFileWithName:@"5.mdl" inResourceFolder:@"xor_lua" andLoadMethodName:@"loadNeuralNetwork"];
+    [t runMain:@"classification" inFolder:@"xor_lua"];//main_2是lua文件名   xor_lua 是lua文件所在文件夹名称
+    [t loadFileWithName:@"5.mdl" inResourceFolder:@"xor_lua" andLoadMethodName:@"loadModel"];
     
     lua_State * L = [t getLuaState];
-    lua_getglobal(L, "testArr");//get lua function name
+    
+    lua_getglobal(L, "predictClass");//get lua function name
     lua_newtable(L); //create a new table
     lua_pushnumber(L, -1); //push -1 into stack
     lua_rawseti(L, -2, 0); //set array[0] by -1
