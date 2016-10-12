@@ -75,7 +75,7 @@ print(d:size())
 
 
 	-- pedict
-	local pred = model:forward(img)
+	local pred = model:forward(image)
 	print(pred:size())
 	local m_t, m_i = torch.max(pred, 1)
 
@@ -84,10 +84,10 @@ print(d:size())
 	--local m_t, m_i = torch.max(pred, 2)
 
     print(m_i:size())
-    print(m_i[1]:size())
+    --print(m_i[1]:size())
 
 
-    print(m_i[1])
+    print(m_i)
     print("flag 2")
 
 
