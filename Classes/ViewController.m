@@ -17,12 +17,12 @@
 
 @implementation ViewController
 
-int testLuaWithArr(float array[],int len)
+int testLuaWithArr(double array[],int len)
 {
-    for (int i = 0; i < len; i++)
-    {
-       NSLog(@"arr__: %f",array[i]);
-    }
+//    for (int i = 0; i < len; i++)
+//    {
+//       NSLog(@"arr__: %f",array[i]);
+//    }
     Torch *t = [Torch new];
     [t initialize];
     [t runMain:@"classification" inFolder:@"xor_lua"];//main_2是lua文件名   xor_lua 是lua文件所在文件夹名称
@@ -34,7 +34,7 @@ int testLuaWithArr(float array[],int len)
     lua_newtable(L); //create a new table
     lua_pushnumber(L, -1); //push -1 into stack
     lua_rawseti(L, -2, 0); //set array[0] by -1
-    NSLog(@"arrLen==%d",len);
+   // NSLog(@"arrLen==%d",len);
     for(int i = 0; i < len; i++)
     {
         lua_pushnumber(L,array[i]);//将数组的数据入栈

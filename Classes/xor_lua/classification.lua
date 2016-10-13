@@ -16,16 +16,10 @@ end
 -- output: int   class
 function predictClass(arr)
 
+print("flag 1")
+
 	local image = torch.Tensor(arr)
 	image:resize(3, 28, 28)
-
---[[for i = 1,28 do
-    for j = 1, 28 do
-        print（image[1][i][j]）
-    end
-end]]
-
-print(image:size())
 
 print(image)
 
@@ -37,7 +31,7 @@ print(image)
 
 	-- pedict
 	local pred = model:forward(image)
-	print(pred:size())
+	print(pred)
 	local m_t, m_i = torch.max(pred, 1)
 
     print(m_i)
