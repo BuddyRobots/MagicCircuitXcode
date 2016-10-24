@@ -38,4 +38,3 @@ inline Vector3f VecNormalize (const Vector3f& v)
 {
 	return VecScale(1.0f/VecMagnitude(v), v);
 }
-

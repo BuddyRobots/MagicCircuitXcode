@@ -33,14 +33,9 @@ static bool _enableRunLoopAcceptInput = false;
 
 - (void)createDisplayLink
 {
-	int animationFrameInterval = (int)(60.0f / (float)UnityGetTargetFPS());
-	assert(animationFrameInterval >= 1);
-
 	_displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(repaintDisplayLink)];
-	[_displayLink setFrameInterval:animationFrameInterval];
+	[self callbackFramerateChange:UnityGetTargetFPS()];
 	[_displayLink addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSRunLoopCommonModes];
-
-	_enableRunLoopAcceptInput = (animationFrameInterval == 1 && UnityDeviceCPUCount() > 1);
 }
 
 - (void)repaintDisplayLink
@@ -95,6 +90,7 @@ static bool _enableRunLoopAcceptInput = false;
 	int animationFrameInterval = (60.0f / targetFPS);
 	if (animationFrameInterval < 1)
 		animationFrameInterval = 1;
+	_enableRunLoopAcceptInput = (animationFrameInterval == 1 && UnityDeviceCPUCount() > 1);
 
 	[_displayLink setFrameInterval:animationFrameInterval];
 }
@@ -216,9 +212,10 @@ extern "C" MTLCommandQueueRef	UnityGetMetalCommandQueue()	{ return  ((UnityDispl
 extern "C" EAGLContext*			UnityGetDataContextEAGL()	{ return _GlesContext; }
 extern "C" int					UnitySelectedRenderingAPI()	{ return _renderingAPI; }
 
-extern "C" UnityRenderBuffer	UnityBackbufferColor()		{ return GetMainDisplaySurface()->unityColorBuffer; }
-extern "C" UnityRenderBuffer	UnityBackbufferDepth()		{ return GetMainDisplaySurface()->unityDepthBuffer; }
+extern "C" UnityRenderBufferHandle	UnityBackbufferColor()		{ return GetMainDisplaySurface()->unityColorBuffer; }
+extern "C" UnityRenderBufferHandle	UnityBackbufferDepth()		{ return GetMainDisplaySurface()->unityDepthBuffer; }
 
+extern "C" void					DisplayManagerEndFrameRendering() { [[DisplayManager Instance] endFrameRendering]; }
 
 
 extern "C" void UnityRepaint()
@@ -231,21 +228,20 @@ extern "C" void UnityRepaint()
 		Profiler_FrameStart();
 		UnityInputProcess();
 
-		UnityStartFrame(GetMainDisplaySurface()->unityColorBuffer, GetMainDisplaySurface()->unityDepthBuffer);
-
 		UnityPlayerLoop();
-
-		[[DisplayManager Instance] endFrameRendering];
-		UnityEndFrame();
 
 		// On multicore devices running at 60 FPS some touch event delivery isn't properly interleaved with graphical frames.
 		// Running additional run loop here improves event handling in those cases.
 		// Passing here an NSDate from the past invokes run loop only once.
 #if ENABLE_RUNLOOP_ACCEPT_INPUT
 		static NSDate* _past = [NSDate date];
-		if (_enableRunLoopAcceptInput)
+		// We get "NSInternalInconsistencyException: unexpected start state" exception if there are events queued and app is
+		// going to background at the same time. This happens when we render additional frame after receiving
+		// applicationWillResignActive. So check if we are supposed to ignore input.
+		bool ignoreInput = [[UIApplication sharedApplication] isIgnoringInteractionEvents];
+		if (!ignoreInput && _enableRunLoopAcceptInput)
 		{
-			[[NSRunLoop currentRunLoop] acceptInputForMode:NSDefaultRunLoopMode beforeDate:_past];
+			[[NSRunLoop currentRunLoop] acceptInputForMode:NSRunLoopCommonModes beforeDate:_past];
 		}
 #endif
 	}

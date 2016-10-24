@@ -40,8 +40,8 @@ bool	_ios70orNewer			= false;
 bool	_ios80orNewer			= false;
 bool	_ios81orNewer			= false;
 bool	_ios82orNewer			= false;
-bool 	_ios90orNewer			= false;
-bool 	_ios91orNewer			= false;
+bool	_ios90orNewer			= false;
+bool	_ios91orNewer			= false;
 
 // was unity rendering already inited: we should not touch rendering while this is false
 bool	_renderingInited		= false;
@@ -160,6 +160,7 @@ extern "C" void UnityRequestQuit()
 }
 #endif
 
+#if UNITY_USES_REMOTE_NOTIFICATIONS
 - (void)application:(UIApplication*)application didReceiveRemoteNotification:(NSDictionary*)userInfo
 {
 	AppController_SendNotificationWithArg(kUnityDidReceiveRemoteNotification, userInfo);
@@ -189,6 +190,7 @@ extern "C" void UnityRequestQuit()
 	AppController_SendNotificationWithArg(kUnityDidFailToRegisterForRemoteNotificationsWithError, error);
 	UnitySendRemoteNotificationError(error);
 }
+#endif
 
 - (BOOL)application:(UIApplication*)application openURL:(NSURL*)url sourceApplication:(NSString*)sourceApplication annotation:(id)annotation
 {
@@ -271,18 +273,14 @@ extern "C" void UnityRequestQuit()
 {
 	::printf("-> applicationDidBecomeActive()\n");
 
-	if(_snapshotView)
-	{
-		[_snapshotView removeFromSuperview];
-		_snapshotView = nil;
-	}
+	[self removeSnapshotView];
 
 	if(_unityAppReady)
 	{
 		if(UnityIsPaused() && _wasPausedExternal == false)
 		{
-			UnityPause(0);
 			UnityWillResume();
+			UnityPause(0);
 		}
 		UnitySetPlayerFocus(1);
 	}
@@ -293,6 +291,12 @@ extern "C" void UnityRequestQuit()
 	}
 
 	_didResignActive = false;
+}
+
+- (void)removeSnapshotView
+{
+	[_snapshotView removeFromSuperview];
+	_snapshotView = nil;
 }
 
 - (void)applicationWillResignActive:(UIApplication*)application
@@ -318,9 +322,21 @@ extern "C" void UnityRequestQuit()
 				[self repaint];
 				UnityPause(1);
 
-				_snapshotView = [self createSnapshotView];
-				if(_snapshotView)
-					[_rootView addSubview:_snapshotView];
+				// this is done on the next frame so that
+				// in the case where unity is paused while going 
+				// into the background and an input is deactivated
+				// we don't mess with the view hierarchy while taking
+				// a view snapshot (case 760747).
+				dispatch_async(dispatch_get_main_queue(), ^{
+					if (_didResignActive)
+					{
+						[self removeSnapshotView];
+
+						_snapshotView = [self createSnapshotView];
+						if(_snapshotView)
+						[_rootView addSubview:_snapshotView];
+					}
+				});
 			}
 		}
 	}

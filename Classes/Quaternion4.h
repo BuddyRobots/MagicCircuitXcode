@@ -116,4 +116,3 @@ inline Quaternion4f QuatRotationFromTo(const Vector3f& src, const Vector3f& dest
 	return QuatNormalize(QuatMake(
 		c.x*i, c.y*i, c.z*i, s*0.5f));
 }
-

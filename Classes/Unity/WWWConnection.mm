@@ -8,6 +8,8 @@
 //const char* WWWDelegateClassName		= "UnityWWWConnectionSelfSignedCertDelegate";
 const char* WWWDelegateClassName		= "UnityWWWConnectionDelegate";
 const char* WWWRequestProviderClassName = "UnityWWWRequestDefaultProvider";
+static NSOperationQueue *webOperationQueue;
+static NSOperationQueue *fileOperationQueue;
 
 @interface UnityWWWConnectionDelegate()
 @property (readwrite, nonatomic) void*                         udata;
@@ -323,26 +325,42 @@ static void WaitOnCondition(UnityWWWConnectionDelegate* delegate)
 extern "C" void UnitySendWWWConnection(void* connection, const void* data, unsigned length, bool blockImmediately)
 {
 	UnityWWWConnectionDelegate* delegate = (__bridge UnityWWWConnectionDelegate*)connection;
-	
+
 	NSMutableURLRequest* request = delegate.request;
-	
+
 	if (data != nil && length > 0)
 	{
 		[request setHTTPBody:[NSData dataWithBytes:data length:length]];
 		[request setValue:[NSString stringWithFormat:@"%d", length] forHTTPHeaderField:@"Content-Length"];
 	}
-	
+
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    webOperationQueue = [[NSOperationQueue alloc] init];
+    webOperationQueue.maxConcurrentOperationCount = [NSProcessInfo processInfo].activeProcessorCount * 5;
+	webOperationQueue.name = @"com.unity3d.WebOperationQueue";
+
+	fileOperationQueue = [[NSOperationQueue alloc] init];
+	fileOperationQueue.maxConcurrentOperationCount = [NSProcessInfo processInfo].activeProcessorCount;
+	fileOperationQueue.name = @"com.unity3d.FileOperationQueue";
+  });
+
+	NSOperationQueue *queueToUse = webOperationQueue;
+	if ([request.URL isFileURL])
+	{
+		queueToUse = fileOperationQueue;
+	}
 	// Start connection on non-main thread
 	// This is important because didReceiveData handler may stall in case a target buffer is not ready.
 	// We have limited accumulator buffer pretty much for everything (assetbundles, downloadhandler) and stall until the data is consumed.
-	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-			NSRunLoop *loop = [NSRunLoop currentRunLoop];
-			delegate.connection = [[NSURLConnection alloc] initWithRequest:request delegate:delegate startImmediately:NO];
-			[delegate.connection scheduleInRunLoop:loop forMode:NSRunLoopCommonModes];
-			[delegate.connection start];
-			[loop run];
-	});
-	
+  [queueToUse addOperation:[NSBlockOperation blockOperationWithBlock:^{
+    NSRunLoop *loop = [NSRunLoop currentRunLoop];
+    delegate.connection = [[NSURLConnection alloc] initWithRequest:request delegate:delegate startImmediately:NO];
+    [delegate.connection scheduleInRunLoop:loop forMode:NSRunLoopCommonModes];
+    [delegate.connection start];
+    [loop run];
+  }]];
+
 	if (blockImmediately)
 	{
 		delegate.manuallyHandleRedirect = YES;

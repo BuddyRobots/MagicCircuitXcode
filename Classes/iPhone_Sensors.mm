@@ -29,7 +29,7 @@ static id gGameControllerClass = nil;
 // This defines the number of maximum acceleration events Unity will queue internally for scripts to access.
 int gMaxQueuedAccelerationEvents = 2 * 60; // 120 events or 2 seconds at 60Hz reporting.
 
-static ControllerPausedHandler gControllerHandler = ^(GCController *controller) 
+static ControllerPausedHandler gControllerHandler = ^(GCController *controller)
 {
 	NSArray* list = QueryControllerCollection();
 	if (list != nil)
@@ -512,6 +512,7 @@ static void ReportJoystickExtended(int idx, GCExtendedGamepad* gamepad)
 	ReportJoystickButton(idx, BTN_R2, [gamepad rightTrigger]);
 }
 
+
 static void SimulateAttitudeViaGravityVector (const Vector3f& gravity, Quaternion4f& currentAttitude, Vector3f& rotationRate)
 {
 	static Quaternion4f lastAttitude = QuatIdentity();
@@ -539,7 +540,7 @@ static void ReportJoystickMotion(int idx, GCMotion* motion)
 #if SIMULATE_ATTITUDE_FROM_GRAVITY
 	SimulateAttitudeViaGravityVector(VecMake((float)motion.gravity.x, (float)motion.gravity.y, (float)motion.gravity.z), attitude, rotationRate);
 #endif
-
+	
 	// From docs:
 	// gravity (x,y,z) : 16, 17, 18
 	// user acceleration: 19, 20, 21
@@ -564,19 +565,6 @@ static void ReportJoystickMotion(int idx, GCMotion* motion)
 		sGCMotionForwardedForCurrentFrame = true;
 	}
 #endif
-}
-
-static const char* GetGamepadType(GCController* controller)
-{
-	if ([controller extendedGamepad] != nil)
-		return "extended";
-
-#if UNITY_APPLETV
-	if ([controller microGamepad] != nil)
-		return "micro";
-#endif
-
-	return "basic";
 }
 
 static void ReportJoystick(GCController* controller, int idx)
@@ -607,6 +595,50 @@ static void ReportJoystick(GCController* controller, int idx)
 	gPausedJoysticks[idx] = false;
 }
 
+// On tvOS simulator we implement a fake remote as tvOS simulator
+// does not support controllers (yet)
+#if UNITY_TVOS_SIMULATOR_FAKE_REMOTE
+struct FakeRemoteState
+{
+	bool pressedX, pressedA;
+	bool pressedUp, pressedDown, pressedLeft, pressedRight;
+	float xAxis, yAxis;
+
+	FakeRemoteState() :
+		pressedX(false),
+		pressedA(false),
+		pressedUp(false),
+		pressedDown(false),
+		pressedLeft(false),
+		pressedRight(false),
+		xAxis(0),
+		yAxis(0)
+	{}
+};
+
+static FakeRemoteState gFakeRemoteState;
+
+static void ReportFakeRemoteButton(int idx, JoystickButtonNumbers num, bool pressed)
+{
+	SetJoystickButtonState(idx + 1, num, pressed);
+	UnitySetJoystickPosition(idx + 1, num, pressed);
+}
+
+void ReportFakeRemote(int idx)
+{
+	UnitySetJoystickPosition(idx + 1, 0, gFakeRemoteState.xAxis);
+	UnitySetJoystickPosition(idx + 1, 1, -gFakeRemoteState.yAxis);
+
+	ReportFakeRemoteButton(idx, BTN_DPAD_UP, gFakeRemoteState.pressedUp);
+	ReportFakeRemoteButton(idx, BTN_DPAD_RIGHT, gFakeRemoteState.pressedRight);
+	ReportFakeRemoteButton(idx, BTN_DPAD_DOWN, gFakeRemoteState.pressedDown);
+	ReportFakeRemoteButton(idx, BTN_DPAD_LEFT, gFakeRemoteState.pressedLeft);
+
+	ReportFakeRemoteButton(idx, BTN_A, gFakeRemoteState.pressedA);
+	ReportFakeRemoteButton(idx, BTN_X, gFakeRemoteState.pressedX);
+}
+#endif
+
 extern "C" void UnityUpdateJoystickData()
 {
 	UnityInitJoysticks();
@@ -628,6 +660,11 @@ extern "C" void UnityUpdateJoystickData()
 		}
 	}
 
+#if UNITY_TVOS_SIMULATOR_FAKE_REMOTE
+	int remoteIndex = list != nil ? (int)[list count] : 0;
+	ReportFakeRemote(remoteIndex);
+#endif
+
 	// Report all aggregated joystick button in bulk
 	SetAggregatedJoystickState();
 }
@@ -635,7 +672,18 @@ extern "C" void UnityUpdateJoystickData()
 extern "C" int	UnityGetJoystickCount()
 {
 	NSArray* list = QueryControllerCollection();
-	return list != nil ? (int)[list count] : 0;
+	int count = list != nil ? (int)[list count] : 0;
+#if UNITY_TVOS_SIMULATOR_FAKE_REMOTE
+	count++;
+#endif 
+	return count;
+}
+
+static void PrintJoystickIdentifier(int idx, char* buffer, int maxLen, const char* typeString,
+									const char* attachment, const char* vendorName)
+{
+	snprintf(buffer, maxLen, "[%s,%s] joystick %d by %s",
+			 typeString, attachment, idx + 1, vendorName);
 }
 
 extern "C" void UnityGetJoystickName(int idx, char* buffer, int maxLen)
@@ -653,14 +701,20 @@ extern "C" void UnityGetJoystickName(int idx, char* buffer, int maxLen)
 		if ([[controller vendorName] rangeOfString:@"Forwarded"].location == NSNotFound)
 			attached = (controller.attachedToDevice ? "wired" : "wireless");
 
-		snprintf(buffer, maxLen, "[%s,%s] joystick %d by %s",
-					GetGamepadType(controller),
-					attached,
-					idx + 1,
-					[[controller vendorName] UTF8String]);
+		const char* typeString = [controller extendedGamepad] != nil ? "extended" : "basic";
+
+		PrintJoystickIdentifier(idx, buffer, maxLen, typeString, attached,
+								[[controller vendorName] UTF8String]);
 	}
 	else
 	{
+#if UNITY_TVOS_SIMULATOR_FAKE_REMOTE
+		if (idx == [QueryControllerCollection() count])
+		{
+			PrintJoystickIdentifier(idx, buffer, maxLen, "basic", "wireless", "Unity");
+			return;
+		}
+#endif
 		strncpy(buffer, "unknown", maxLen);
 	}
 }
@@ -904,7 +958,7 @@ extern "C" int UnityGetAppleTVRemoteTouchesEnabled()
 
 extern "C" void UnitySetAppleTVRemoteTouchesEnabled(int val)
 {
-	gTVRemoteTouchesEnabled = val;	
+	gTVRemoteTouchesEnabled = val;
 }
 
 extern "C" int UnityGetAppleTVRemoteAllowExitToMenu()
@@ -968,3 +1022,56 @@ extern "C" void		UnitySetAppleTVRemoteReportAbsoluteDpadValues(int val)
 	}
 #endif
 }
+
+#if UNITY_TVOS_SIMULATOR_FAKE_REMOTE
+static void FakeRemoteStateSetButton(UIPressType type, bool state)
+{
+	switch (type)
+	{
+	case UIPressTypeUpArrow: gFakeRemoteState.pressedUp = state; return;
+	case UIPressTypeDownArrow: gFakeRemoteState.pressedDown = state; return;
+	case UIPressTypeLeftArrow: gFakeRemoteState.pressedLeft = state; return;
+	case UIPressTypeRightArrow: gFakeRemoteState.pressedRight = state; return;
+	case UIPressTypeSelect: gFakeRemoteState.pressedA = state; return;
+	case UIPressTypePlayPause: gFakeRemoteState.pressedX = state; return;
+	}
+}
+
+void ReportSimulatedRemoteButtonPress(UIPressType type)
+{
+	FakeRemoteStateSetButton(type, true);
+}
+
+void ReportSimulatedRemoteButtonRelease(UIPressType type)
+{
+	FakeRemoteStateSetButton(type, false);
+}
+
+static float FakeRemoteMapTouchToAxis(float pos, float bounds)
+{
+	float halfRange = bounds / 2;
+	return (pos - halfRange) / halfRange;
+}
+
+void ReportSimulatedRemoteTouchesBegan(UIView* view, NSSet* touches)
+{
+	ReportSimulatedRemoteTouchesMoved(view, touches);
+}
+
+void ReportSimulatedRemoteTouchesMoved(UIView* view, NSSet* touches)
+{
+	for (UITouch* touch in touches)
+	{
+		gFakeRemoteState.xAxis = FakeRemoteMapTouchToAxis([touch locationInView:view].x, view.bounds.size.width);
+		gFakeRemoteState.yAxis = FakeRemoteMapTouchToAxis([touch locationInView:view].y, view.bounds.size.height);
+		// We assume that at most single touch is received.
+		break;
+	}
+}
+
+void ReportSimulatedRemoteTouchesEnded(UIView* view, NSSet* touches)
+{
+	gFakeRemoteState.xAxis = 0;
+	gFakeRemoteState.yAxis = 0;
+}
+#endif

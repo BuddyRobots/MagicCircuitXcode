@@ -110,7 +110,7 @@ static AVKitVideoPlayback*	_AVKitVideoPlayback	= nil;
 		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(moviePlayBackDidFinish:) name:MPMoviePlayerDidExitFullscreenNotification object:moviePlayer];
 		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(moviePlayBackSourceTypeAvailable:) name:MPMovieSourceTypeAvailableNotification object:moviePlayer];
 		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(moviePlayBackMediaTypesAvailable:) name:MPMovieMediaTypesAvailableNotification object:moviePlayer];
-		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(moviePlayBackNaturalSizeAvailable:) name:MPMovieNaturalSizeAvailableNotification object:moviePlayer];
+		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(moviePlayBackNaturalSizeAvailable:) name:MPMovieNaturalSizeAvailableNotification object:nil];
 		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(audioRouteChanged:) name:AVAudioSessionRouteChangeNotification object:nil];
 
 		moviePlayer.view.frame = GetAppController().rootView.bounds;
@@ -168,29 +168,31 @@ static AVKitVideoPlayback*	_AVKitVideoPlayback	= nil;
 }
 - (void)finish
 {
-	@synchronized(self)
+	if(moviePlayer)
 	{
-		if(moviePlayer)
-		{
 		// remove notifications right away to avoid recursively calling finish from callback
-			[[NSNotificationCenter defaultCenter] removeObserver:self];
-		}
-
-		[moviePlayer.view removeFromSuperview];
-		[cancelOnTouchView removeFromSuperview];
-		cancelOnTouchView = nil;
-
-		[moviePlayer pause];
-		[moviePlayer stop];
-		moviePlayer = nil;
-
-		_MPVideoPlayback	= nil;
-
-		UnityUnregisterViewControllerListener((id<UnityViewControllerListener>)self);
-
-		if(UnityIsPaused())
-			UnityPause(0);
+		[[NSNotificationCenter defaultCenter] removeObserver:self name:MPMoviePlayerPlaybackDidFinishNotification object:moviePlayer];
+		[[NSNotificationCenter defaultCenter] removeObserver:self name:MPMoviePlayerDidExitFullscreenNotification object:moviePlayer];
+		[[NSNotificationCenter defaultCenter] removeObserver:self name:MPMovieSourceTypeAvailableNotification object:moviePlayer];
+		[[NSNotificationCenter defaultCenter] removeObserver:self name:MPMovieMediaTypesAvailableNotification object:moviePlayer];
+		[[NSNotificationCenter defaultCenter] removeObserver:self name:MPMovieNaturalSizeAvailableNotification object:moviePlayer];
+		[[NSNotificationCenter defaultCenter] removeObserver:self name:AVAudioSessionRouteChangeNotification object:nil];
 	}
+
+	[moviePlayer.view removeFromSuperview];
+	[cancelOnTouchView removeFromSuperview];
+	cancelOnTouchView = nil;
+
+	[moviePlayer pause];
+	[moviePlayer stop];
+	moviePlayer = nil;
+
+	_MPVideoPlayback	= nil;
+
+	UnityUnregisterViewControllerListener((id<UnityViewControllerListener>)self);
+
+	if(UnityIsPaused())
+		UnityPause(0);
 }
 @end
 #endif
@@ -198,17 +200,16 @@ static AVKitVideoPlayback*	_AVKitVideoPlayback	= nil;
 @implementation AVKitVideoPlayback
 static Class _AVPlayerViewControllerClass = nil;
 
-#if !UNITY_TVOS
+#if UNITY_IOS
 static NSUInteger supportedInterfaceOrientations_DefaultImpl(id self_, SEL _cmd)
 {
 	return GetAppController().rootViewController.supportedInterfaceOrientations;
 }
 #endif
 
-+ (void)InitClass
++ (void)initialize
 {
-	// TODO: dispatch_once
-	if(_AVPlayerViewControllerClass == nil)
+	if(self == [AVKitVideoPlayback class])
 	{
 		NSBundle* avKitBundle = [NSBundle bundleWithPath:@"/System/Library/Frameworks/AVKit.framework"];
 		if(avKitBundle)
@@ -218,7 +219,7 @@ static NSUInteger supportedInterfaceOrientations_DefaultImpl(id self_, SEL _cmd)
 				[avKitBundle unload];
 				return;
 			}
-#if !UNITY_TVOS
+#if UNITY_IOS
 			ObjCSetKnownInstanceMethod(_AVPlayerViewControllerClass, @selector(supportedInterfaceOrientations), (IMP)&supportedInterfaceOrientations_DefaultImpl);
 #endif
 		}
@@ -226,7 +227,6 @@ static NSUInteger supportedInterfaceOrientations_DefaultImpl(id self_, SEL _cmd)
 }
 + (BOOL)IsSupported
 {
-	[AVKitVideoPlayback InitClass];
 	return _AVPlayerViewControllerClass != nil;
 }
 - (id)initAndPlay:(NSURL*)url bgColor:(UIColor*)color showControls:(BOOL)controls videoGravity:(const NSString*)scaling cancelOnTouch:(BOOL)cot
@@ -252,7 +252,6 @@ static NSUInteger supportedInterfaceOrientations_DefaultImpl(id self_, SEL _cmd)
 {
 	@autoreleasepool
 	{
-		[AVKitVideoPlayback InitClass];
 		videoViewController = [[_AVPlayerViewControllerClass alloc] init];
 
 		videoViewController.showsPlaybackControls = showControls;
@@ -302,15 +301,11 @@ static NSUInteger supportedInterfaceOrientations_DefaultImpl(id self_, SEL _cmd)
 	}
 
 	[videoPlayer playVideoPlayer];
-#if UNITY_TVOS
-	GetAppController().window.rootViewController = videoViewController;
-#else
 	UIViewController *viewController = [GetAppController() topMostController];
 	if ([viewController isEqual:videoViewController] == NO && [videoViewController isBeingPresented] == NO)
 	{
 		[viewController presentViewController:videoViewController animated:NO completion:nil];
 	}
-#endif
 }
 - (void)onPlayerDidFinishPlayingVideo
 {
@@ -330,34 +325,27 @@ static NSUInteger supportedInterfaceOrientations_DefaultImpl(id self_, SEL _cmd)
 }
 - (void)finish
 {
-	@synchronized(self)
+	UIViewController *viewController = [GetAppController() topMostController];
+	if ([viewController isEqual:videoViewController] == YES && [viewController isBeingDismissed] == NO)
 	{
-#if UNITY_TVOS
-		GetAppController().window.rootViewController = GetAppController().rootViewController;
-#else
-		UIViewController *viewController = [GetAppController() topMostController];
-		if ([viewController isEqual:videoViewController] == YES && [viewController isBeingDismissed] == NO)
-		{
-			[viewController dismissViewControllerAnimated:NO completion:nil];
-		}
-#endif
-
-		[cancelOnTouchView removeFromSuperview];
-		[videoPlayer unloadPlayer];
-
-		cancelOnTouchView = nil;
-		videoPlayer = nil;
-		videoViewController = nil;
-
-		_AVKitVideoPlayback	= nil;
-
-#if UNITY_TVOS
-		UnityCancelTouches();
-#endif
-
-		if(UnityIsPaused())
-			UnityPause(0);
+		[viewController dismissViewControllerAnimated:NO completion:nil];
 	}
+
+	[cancelOnTouchView removeFromSuperview];
+	[videoPlayer unloadPlayer];
+
+	cancelOnTouchView = nil;
+	videoPlayer = nil;
+	videoViewController = nil;
+
+	_AVKitVideoPlayback	= nil;
+
+#if UNITY_TVOS
+	UnityCancelTouches();
+#endif
+
+	if(UnityIsPaused())
+		UnityPause(0);
 }
 @end
 
@@ -412,6 +400,7 @@ extern "C" void UnityPlayFullScreenVideo(const char* path, const float* color, u
 		url = [NSURL fileURLWithPath:fullPath];
 	}
 
+	// first try AVKit
 	{
 		const BOOL		showControls[]	=	{ YES, YES, NO, NO };
 		const NSString* videoGravity[]	=
@@ -424,7 +413,8 @@ extern "C" void UnityPlayFullScreenVideo(const char* path, const float* color, u
 
 		if([AVKitVideoPlayback IsSupported])
 		{
-			[_AVKitVideoPlayback finish];
+			if (_AVKitVideoPlayback)
+				[_AVKitVideoPlayback finish];
 			_AVKitVideoPlayback = [[AVKitVideoPlayback alloc] initAndPlay:url bgColor:bgColor
 				showControls:showControls[controls] videoGravity:videoGravity[scaling] cancelOnTouch:cancelOnTouch[controls]
 			];
@@ -432,6 +422,7 @@ extern "C" void UnityPlayFullScreenVideo(const char* path, const float* color, u
 		}
 	}
 
+	// MediaPlayer only if AVKit is not supported (old ios)
 #if UNITY_IOS
 	{
 		const MPMovieControlStyle controlMode[] =
@@ -449,11 +440,23 @@ extern "C" void UnityPlayFullScreenVideo(const char* path, const float* color, u
 			MPMovieScalingModeFill,
 		};
 
-		[_MPVideoPlayback finish];
+		if (_MPVideoPlayback)
+			[_MPVideoPlayback finish];
 		_MPVideoPlayback = [[MPVideoPlayback alloc] initAndPlay:url bgColor:bgColor
 			controls:controlMode[controls] scaling:scalingMode[scaling] cancelOnTouch:cancelOnTouch[controls]
 		];
 	}
+#endif
+}
+
+extern "C" void UnityStopFullScreenVideoIfPlaying()
+{
+	if (_AVKitVideoPlayback)
+		[_AVKitVideoPlayback finish];
+
+#if UNITY_IOS
+	if (_MPVideoPlayback)
+		[_MPVideoPlayback finish];
 #endif
 }
 

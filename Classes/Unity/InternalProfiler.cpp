@@ -198,8 +198,16 @@ Profiler_FrameUpdate(const UnityFrameStats* unityFrameStats)
 		::printf("draw calls>    min: %3d    max: %3d    avg: %3d\n", (int)_drawCallCountPB.minV, (int)_drawCallCountPB.maxV, (int)(_drawCallCountPB.avgV / EachNthFrame));
 		::printf("tris>          min: %5d  max: %5d  avg: %5d\n", (int)_triCountPB.minV, (int)_triCountPB.maxV, (int)(_triCountPB.avgV / EachNthFrame));
 		::printf("verts>         min: %5d  max: %5d  avg: %5d\n", (int)_vertCountPB.minV, (int)_vertCountPB.maxV, (int)(_vertCountPB.avgV / EachNthFrame));
-		::printf("dynamic batching> batched draw calls: %3d batches: %3d tris: %5d verts: %5d\n", (int)(_dynamicBatchedDrawCallCountPB.avgV / EachNthFrame), (int)(_dynamicBatchCountPB.avgV / EachNthFrame), (int)(_dynamicBatchedTriCountPB.avgV / EachNthFrame), (int)(_dynamicBatchedVertCountPB.avgV / EachNthFrame));
-		::printf("static batching>  batched draw calls: %3d batches: %3d tris: %5d verts: %5d\n", (int)(_dynamicBatchedDrawCallCountPB.avgV / EachNthFrame), (int)(_dynamicBatchCountPB.avgV / EachNthFrame), (int)(_dynamicBatchedTriCountPB.avgV / EachNthFrame), (int)(_dynamicBatchedVertCountPB.avgV / EachNthFrame));
+		::printf("dynamic batching> batched draw calls: %3d batches: %3d tris: %5d verts: %5d\n",
+				 (int)(_dynamicBatchedDrawCallCountPB.avgV / EachNthFrame),
+				 (int)(_dynamicBatchCountPB.avgV / EachNthFrame),
+				 (int)(_dynamicBatchedTriCountPB.avgV / EachNthFrame),
+				 (int)(_dynamicBatchedVertCountPB.avgV / EachNthFrame));
+		::printf("static batching>  batched draw calls: %3d batches: %3d tris: %5d verts: %5d\n",
+				 (int)(_staticBatchedDrawCallCountPB.avgV / EachNthFrame),
+				 (int)(_staticBatchCountPB.avgV / EachNthFrame),
+				 (int)(_staticBatchedTriCountPB.avgV / EachNthFrame),
+				 (int)(_staticBatchedVertCountPB.avgV / EachNthFrame));
 
 		::printf("player-detail> physx: %4.1f animation: %4.1f culling %4.1f skinning: %4.1f batching: %4.1f render: %4.1f fixed-update-count: %d .. %d\n",
 					   MachToMillisecondsDelta(_fixedPhysicsManagerPB.avgV / EachNthFrame),

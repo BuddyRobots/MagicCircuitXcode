@@ -38,6 +38,94 @@ static const char* GetScaleSuffix(float scale, float maxScale)
 	return "@3x";
 }
 
+static const char* GetOrientationSuffix(ScreenOrientation orient)
+{
+	bool orientPortrait  = (orient == portrait || orient == portraitUpsideDown);
+	bool orientLandscape = (orient == landscapeLeft || orient == landscapeRight);
+
+	bool rotateToPortrait  = _canRotateToPortrait || _canRotateToPortraitUpsideDown;
+	bool rotateToLandscape = _canRotateToLandscapeLeft || _canRotateToLandscapeRight;
+
+	if (_isOrientable)
+	{
+		if (orientPortrait && rotateToPortrait)
+			return "-Portrait";
+		else if (orientLandscape && rotateToLandscape)
+			return "-Landscape";
+		else if (rotateToPortrait)
+			return "-Portrait";
+		else
+			return "-Landscape";
+	}
+	return "";
+}
+
+// Returns a launch image filename for launch images from asset catalogs
+static NSString* GetLaunchImageName(UIUserInterfaceIdiom idiom, const CGSize& screenSize)
+{
+	NSString* name = @"LaunchImage";
+
+	// Here we work around an iOS bug that results in incorrect images
+	// being fetched from launch image asset catalogs.
+	if (idiom == UIUserInterfaceIdiomPad)						  // any iPad
+		name = @"LaunchImage~iPad";
+	else if (idiom == UIUserInterfaceIdiomPhone)
+	{
+		if (screenSize.height == 568 || screenSize.width == 568) // iPhone 5
+			name = @"LaunchImage~568h";
+		else if (screenSize.height == 667 || screenSize.width == 667) // iPhone 6
+			name = @"LaunchImage~667h";
+		else if (screenSize.height == 736 || screenSize.width == 736) // iPhone 6+
+			name = @"LaunchImage~736h";
+	}
+	return name;
+}
+
+// Returns a launch image filename for launch images stored on file system,
+// not on asset catalog
+static NSString* GetLaunchImageFileName(UIUserInterfaceIdiom idiom, const CGSize& screenSize,
+										ScreenOrientation orient)
+{
+	NSString* name = nil;
+	if (idiom == UIUserInterfaceIdiomPad)
+	{
+		// iPads
+		const char* iOSSuffix = _ios70orNewer ? "-700" : "";
+		const char* orientSuffix = GetOrientationSuffix(orient);
+		const char* scaleSuffix = GetScaleSuffix([UIScreen mainScreen].scale, 2.0);
+		name = [NSString stringWithFormat:@"LaunchImage%s%s%s~ipad",
+						 iOSSuffix, orientSuffix, scaleSuffix];
+	}
+	else
+	{
+		// iPhones
+		float scale = [UIScreen mainScreen].scale;
+		const char* scaleSuffix = GetScaleSuffix(scale, 3.0);
+		const char* iOSSuffix = _ios70orNewer ? "-700" : "";
+		const char* orientSuffix = GetOrientationSuffix(orient);
+		const char* rezolutionSuffix = "";
+
+		if (screenSize.height == 568 || screenSize.width == 568) // iPhone5
+			rezolutionSuffix = "-568h";
+		else if (screenSize.height == 667 || screenSize.width == 667) // iPhone6
+		{
+			rezolutionSuffix = "-667h";
+			iOSSuffix = "-800";
+
+			if (scale > 2.0) // iPhone6+ in display zoom mode
+				scaleSuffix = "@2x";
+		}
+		else if (screenSize.height == 736 || screenSize.width == 736) // iPhone6+
+		{
+			rezolutionSuffix = "-736h";
+			iOSSuffix = "-800";
+		}
+		name = [NSString stringWithFormat:@"LaunchImage%s%s%s%s",
+						 iOSSuffix, orientSuffix, rezolutionSuffix, scaleSuffix];
+	}
+	return name;
+}
+
 @implementation SplashScreen
 {
 	UIImageView* m_ImageView;
@@ -71,27 +159,16 @@ static const char* GetScaleSuffix(float scale, float maxScale)
 */
 - (void)updateOrientation:(ScreenOrientation)orient
 {
-	bool orientPortrait  = (orient == portrait || orient == portraitUpsideDown);
-	bool orientLandscape = (orient == landscapeLeft || orient == landscapeRight);
+	UnityReportResizeView(self.bounds.size.width * self.contentScaleFactor, self.bounds.size.height * self.contentScaleFactor, orient);
 
-	bool rotateToPortrait  = _canRotateToPortrait || _canRotateToPortraitUpsideDown;
-	bool rotateToLandscape = _canRotateToLandscapeLeft || _canRotateToLandscapeRight;
+	UIUserInterfaceIdiom idiom = [[UIDevice currentDevice] userInterfaceIdiom];
 
-	const char* orientSuffix = "";
-	if (_isOrientable)
-	{
-		if (orientPortrait && rotateToPortrait)
-			orientSuffix = "-Portrait";
-		else if (orientLandscape && rotateToLandscape)
-			orientSuffix = "-Landscape";
-		else if (rotateToPortrait)
-			orientSuffix = "-Portrait";
-		else
-			orientSuffix = "-Landscape";
-	}
+	NSString* xibName = nil;
+	if (idiom == UIUserInterfaceIdiomPhone)
+		xibName = @"LaunchScreen-iPhone";
+	else if (idiom == UIUserInterfaceIdiomPad)
+		xibName = @"LaunchScreen-iPad";
 
-	bool isIphone = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone;
-	NSString* xibName = isIphone ? @"LaunchScreen-iPhone" : @"LaunchScreen-iPad";
 	bool hasLaunchScreen = [[NSBundle mainBundle] pathForResource:xibName ofType:@"nib"] != nullptr;
 
 	if (_usesLaunchscreen && hasLaunchScreen)
@@ -108,70 +185,24 @@ static const char* GetScaleSuffix(float scale, float maxScale)
 	}
 
 	UIImage* image = nil;
-	CGSize size = [[UIScreen mainScreen] bounds].size;
+	CGSize screenSize = [[UIScreen mainScreen] bounds].size;
 
 	// Try asset catalog on iOS 7.0+. Note, that we can't be sure that asset
 	// catalog is used, because the deployment target might have been lower and
 	// thus old launch images are used.
 	if (_ios70orNewer)
 	{
-		NSString* name = @"LaunchImage";
-
-		// Here we work around an iOS bug that results in incorrect images
-		// being fetched from launch image asset catalogs.
-		if (!isIphone)									  // any iPad
-			name = @"LaunchImage~iPad";
-		else if (size.height == 568 || size.width == 568) // iPhone 5
-			name = @"LaunchImage~568h";
-		else if (size.height == 667 || size.width == 667) // iPhone 6
-			name = @"LaunchImage~667h";
-		else if (size.height == 736 || size.width == 736) // iPhone 6+
-			name = @"LaunchImage~736h";
-		image = [UIImage imageNamed:name];
+		NSString* imageName = GetLaunchImageName(idiom, screenSize);
+		image = [UIImage imageNamed:imageName];
 	}
 
 	if (image == nil)
 	{
 		// Old launch image from file
-		NSString* imageName;
-		if (!isIphone)
-		{
-			// iPads
-			const char* iOSSuffix = _ios70orNewer ? "-700" : "";
-			const char* scaleSuffix = GetScaleSuffix([UIScreen mainScreen].scale, 2.0);
-			imageName = [NSString stringWithFormat:@"LaunchImage%s%s%s~ipad",
-							      iOSSuffix, orientSuffix, scaleSuffix];
-		}
-		else
-		{
-			// iPhones
-			float scale = [UIScreen mainScreen].scale;
-			const char* scaleSuffix = GetScaleSuffix(scale, 3.0);
-			const char* iOSSuffix = _ios70orNewer ? "-700" : "";
-			const char* rezolutionSuffix = "";
+		NSString* imageName = GetLaunchImageFileName(idiom, screenSize, orient);
+		NSString* imagePath = [[NSBundle mainBundle] pathForResource:imageName ofType:@"png"];
 
-			if (size.height == 568 || size.width == 568) // iPhone5
-				rezolutionSuffix = "-568h";
-			else if (size.height == 667 || size.width == 667) // iPhone6
-			{
-				rezolutionSuffix = "-667h";
-				iOSSuffix = "-800";
-
-				if (scale > 2.0) // iPhone6+ in display zoom mode
-					scaleSuffix = "@2x";
-			}
-			else if (size.height == 736 || size.width == 736) // iPhone6+
-			{
-				rezolutionSuffix = "-736h";
-				iOSSuffix = "-800";
-			}
-			imageName = [NSString stringWithFormat:@"LaunchImage%s%s%s%s",
-								  iOSSuffix, orientSuffix, rezolutionSuffix, scaleSuffix];
-		}
-
-		NSString* imagePath = [[NSBundle mainBundle] pathForResource: imageName ofType: @"png"];
-
-		image = [UIImage imageWithContentsOfFile: imagePath];
+		image = [UIImage imageWithContentsOfFile:imagePath];
 	}
 
 	if (self->m_ImageView == nil)
@@ -180,7 +211,9 @@ static const char* GetScaleSuffix(float scale, float maxScale)
 		[self addSubview:self->m_ImageView];
 	}
 	else
+	{
 		self->m_ImageView.image = image;
+	}
 }
 
 - (void)layoutSubviews
@@ -210,7 +243,7 @@ static const char* GetScaleSuffix(float scale, float maxScale)
 static void WillRotateToInterfaceOrientation_DefaultImpl(id self_, SEL _cmd, UIInterfaceOrientation toInterfaceOrientation, NSTimeInterval duration)
 {
 	if(_isOrientable)
-		[_splash updateOrientation: ConvertToUnityScreenOrientation(toInterfaceOrientation)];
+		[_splash updateOrientation:ConvertToUnityScreenOrientation(toInterfaceOrientation)];
 
 	UNITY_OBJC_FORWARD_TO_SUPER(self_, [UIViewController class], @selector(willRotateToInterfaceOrientation:duration:), WillRotateToInterfaceOrientationSendFunc, toInterfaceOrientation, duration);
 }
@@ -263,10 +296,10 @@ static void ViewWillTransitionToSize_DefaultImpl(id self_, SEL _cmd, CGSize size
 	bool isIpad = !isIphone;
 
 	// splash will be shown way before unity is inited so we need to override autorotation handling with values read from info.plist
-	_canRotateToPortrait			= [supportedOrientation containsObject: @"UIInterfaceOrientationPortrait"];
-	_canRotateToPortraitUpsideDown	= [supportedOrientation containsObject: @"UIInterfaceOrientationPortraitUpsideDown"];
-	_canRotateToLandscapeLeft		= [supportedOrientation containsObject: @"UIInterfaceOrientationLandscapeRight"];
-	_canRotateToLandscapeRight		= [supportedOrientation containsObject: @"UIInterfaceOrientationLandscapeLeft"];
+	_canRotateToPortrait			= [supportedOrientation containsObject:@"UIInterfaceOrientationPortrait"];
+	_canRotateToPortraitUpsideDown	= [supportedOrientation containsObject:@"UIInterfaceOrientationPortraitUpsideDown"];
+	_canRotateToLandscapeLeft		= [supportedOrientation containsObject:@"UIInterfaceOrientationLandscapeRight"];
+	_canRotateToLandscapeRight		= [supportedOrientation containsObject:@"UIInterfaceOrientationLandscapeLeft"];
 
 	CGSize size = [[UIScreen mainScreen] bounds].size;
 
@@ -292,7 +325,7 @@ static void ViewWillTransitionToSize_DefaultImpl(id self_, SEL _cmd, CGSize size
 	else
 		_nonOrientableDefaultOrientation = portrait;
 
-	_splash = [[SplashScreen alloc] initWithFrame: [[UIScreen mainScreen] bounds]];
+	_splash = [[SplashScreen alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
 	_splash.contentScaleFactor = [UIScreen mainScreen].scale;
 
 	if (_isOrientable)
@@ -316,12 +349,12 @@ static void ViewWillTransitionToSize_DefaultImpl(id self_, SEL _cmd, CGSize size
 	self.wantsFullScreenLayout = TRUE;
 #endif
 
-	[window addSubview: _splash];
+	[window addSubview:_splash];
 	window.rootViewController = self;
-	[window bringSubviewToFront: _splash];
+	[window bringSubviewToFront:_splash];
 
 	ScreenOrientation orient = UIViewControllerOrientation(self);
-	[_splash updateOrientation: orient];
+	[_splash updateOrientation:orient];
 	
 	if (!_isOrientable)
 		orient = _nonOrientableDefaultOrientation;

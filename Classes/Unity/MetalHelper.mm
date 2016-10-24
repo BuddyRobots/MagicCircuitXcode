@@ -35,8 +35,14 @@ extern "C" void CreateSystemRenderingSurfaceMTL(UnityDisplaySurfaceMTL* surface)
 
 	surface->layer.presentsWithTransaction = NO;
 	surface->layer.drawsAsynchronously = YES;
-	CGFloat backgroundColor[] = {0,0,0,1};
-	surface->layer.backgroundColor = CGColorCreate(CGColorSpaceCreateDeviceRGB(), backgroundColor);
+
+	CGFloat backgroundColorValues[] = {0,0,0,1};
+	CGColorSpaceRef colorSpaceRef = CGColorSpaceCreateDeviceRGB();
+	CGColorRef backgroundColorRef = CGColorCreate(colorSpaceRef, backgroundColorValues);
+	surface->layer.backgroundColor = backgroundColorRef; // retained automatically
+	CGColorRelease(backgroundColorRef);
+	CGColorSpaceRelease(colorSpaceRef);
+
 	surface->layer.device = surface->device;
 	surface->layer.pixelFormat = colorFormat;
 	//surface->layer.framebufferOnly = YES;
@@ -140,24 +146,16 @@ extern "C" void CreateUnityRenderBuffersMTL(UnityDisplaySurfaceMTL* surface)
 	// in case of rendering to native + AA, we will also update native target every frame
 
 	if(surface->targetAAColorRT)
-		surface->unityColorBuffer = UnityCreateExternalColorSurfaceMTL(surface->unityColorBuffer, surface->targetAAColorRT, surface->targetColorRT, &tgt_desc);
+		surface->unityColorBuffer	= UnityCreateExternalColorSurfaceMTL(surface->unityColorBuffer, surface->targetAAColorRT, surface->targetColorRT, &tgt_desc);
 	else if(surface->targetColorRT)
-		surface->unityColorBuffer = UnityCreateExternalColorSurfaceMTL(surface->unityColorBuffer, surface->targetColorRT, nil, &tgt_desc);
+		surface->unityColorBuffer	= UnityCreateExternalColorSurfaceMTL(surface->unityColorBuffer, surface->targetColorRT, nil, &tgt_desc);
 	else
-		surface->unityColorBuffer = UnityCreateDummySurface(surface->unityColorBuffer, true, &sys_desc);
+		surface->unityColorBuffer	= UnityCreateDummySurface(surface->unityColorBuffer, true, &sys_desc);
 
-	surface->unityDepthBuffer	= UnityCreateExternalDepthSurfaceMTL(surface->unityDepthBuffer, surface->depthRB, surface->stencilRB, &tgt_desc);
+	surface->unityDepthBuffer		= UnityCreateExternalDepthSurfaceMTL(surface->unityDepthBuffer, surface->depthRB, surface->stencilRB, &tgt_desc);
 
-	if(surface->targetColorRT)
-	{
-		surface->systemColorBuffer = UnityCreateDummySurface(surface->systemColorBuffer, true, &sys_desc);
-		surface->systemDepthBuffer = UnityCreateDummySurface(surface->systemDepthBuffer, false, &sys_desc);
-	}
-	else
-	{
-		surface->systemColorBuffer = 0;
-		surface->systemDepthBuffer = 0;
-	}
+	surface->systemColorBuffer = UnityCreateDummySurface(surface->systemColorBuffer, true, &sys_desc);
+	surface->systemDepthBuffer = UnityCreateDummySurface(surface->systemDepthBuffer, false, &sys_desc);
 }
 
 
@@ -168,30 +166,25 @@ extern "C" void DestroySystemRenderingSurfaceMTL(UnityDisplaySurfaceMTL* surface
 
 extern "C" void DestroyUnityRenderBuffersMTL(UnityDisplaySurfaceMTL* surface)
 {
-	if(surface->unityColorBuffer)	UnityDestroyExternalSurface(surface->unityColorBuffer);
-	if(surface->systemColorBuffer)	UnityDestroyExternalSurface(surface->systemColorBuffer);
+	UnityDestroyExternalSurface(surface->unityColorBuffer);
+	UnityDestroyExternalSurface(surface->systemColorBuffer);
 	surface->unityColorBuffer = surface->systemColorBuffer = 0;
 
-	if(surface->unityDepthBuffer)	UnityDestroyExternalSurface(surface->unityDepthBuffer);
-	if(surface->systemDepthBuffer)	UnityDestroyExternalSurface(surface->systemDepthBuffer);
+	UnityDestroyExternalSurface(surface->unityDepthBuffer);
+	UnityDestroyExternalSurface(surface->systemDepthBuffer);
 	surface->unityDepthBuffer = surface->systemDepthBuffer = 0;
 }
 
 
+extern "C" void UnityPrepareScreenshot()
+{
+	UnitySetRenderTarget(GetMainDisplaySurface()->unityColorBuffer, GetMainDisplaySurface()->unityDepthBuffer);
+}
+
 extern "C" void PreparePresentMTL(UnityDisplaySurfaceMTL* surface)
 {
-	if(surface->allowScreenshot && UnityIsCaptureScreenshotRequested())
-	{
-		UnitySetRenderTarget(surface->unityColorBuffer, surface->unityDepthBuffer);
-		UnityCaptureScreenshot();
-	}
-
 	if(surface->targetColorRT)
-	{
-		assert(surface->systemColorBuffer != 0 && surface->systemDepthBuffer != 0);
 		UnityBlitToBackbuffer(surface->unityColorBuffer, surface->systemColorBuffer, surface->systemDepthBuffer);
-	}
-
 	APP_CONTROLLER_RENDER_PLUGIN_METHOD(onFrameResolved);
 }
 extern "C" void PresentMTL(UnityDisplaySurfaceMTL* surface)

@@ -5,6 +5,7 @@
 #include "PluginBase/RenderPluginDelegate.h"
 
 @class UnityView;
+@class UnityViewControllerBase;
 @class DisplayConnection;
 
 @interface UnityAppController : NSObject<UIApplicationDelegate>

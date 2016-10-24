@@ -316,7 +316,7 @@ extern "C" void PreparePresentGLES(UnityDisplaySurfaceGLES* surface)
 
 		assert(surface->systemColorBuffer != 0 && surface->systemDepthBuffer != 0);
 
-		UnityRenderBuffer src = surface->resolvedColorBuffer ? surface->resolvedColorBuffer : surface->unityColorBuffer;
+		UnityRenderBufferHandle src = surface->resolvedColorBuffer ? surface->resolvedColorBuffer : surface->unityColorBuffer;
 		UnityBlitToBackbuffer(src, surface->systemColorBuffer, surface->systemDepthBuffer);
 	}
 

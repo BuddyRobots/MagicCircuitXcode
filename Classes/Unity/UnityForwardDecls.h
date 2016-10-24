@@ -72,11 +72,14 @@
 // unity internal audio effect definition struct
 struct UnityAudioEffectDefinition;
 
+// new unity rendering api
+struct IUnityInterfaces;
 
-// unity internal render buffer struct
+// unity internal native render buffer struct (the one you acquire in C# with RenderBuffer.GetNativeRenderBufferPtr())
 struct RenderSurfaceBase;
 typedef struct RenderSurfaceBase* UnityRenderBuffer;
-
+// render buffer handle (you can query UnityRenderBuffer from it)
+typedef void* UnityRenderBufferHandle;
 
 // be aware that this struct is shared with unity implementation so you should absolutely not change it
 typedef struct
@@ -175,6 +178,8 @@ DeviceGeneration
 	deviceiPhone6SPlus	= 26,
 	deviceiPadPro1Gen	= 27,
 	deviceiPadMini4Gen	= 28,
+	deviceiPhoneSE1Gen  = 29,
+	deviceiPadPro10Inch1Gen = 30,
 
 	deviceiPhoneUnknown		= 10001,
 	deviceiPadUnknown		= 10002,
